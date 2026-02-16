@@ -57,7 +57,7 @@ export async function initializeWorkspace(
       }
       logger.info(`Classification: ${[...typeCounts.entries()].map(([k, v]) => `${k}=${v}`).join(', ')}`);
 
-      // Step 5: Assemble exercises
+      // Step 5: Assemble exercises from code blocks
       progress.report({ message: 'Assembling exercises...', increment: 10 });
       const exercises = assembleExercises(chapters, allBlocks);
       logger.info(`Assembled ${exercises.length} exercises`);

@@ -54,14 +54,13 @@ export class ExerciseTreeProvider implements vscode.TreeDataProvider<vscode.Tree
     }
 
     if (!element) {
-      // Root level: chapters
-      return this.template.chapters
-        .filter(ch => this.chapterHasExercises(ch))
-        .map(ch => {
-          const exerciseIds = this.getAllExerciseIds(ch);
-          const completion = this.tracker!.getChapterCompletionPercent(ch.id, exerciseIds);
-          return new ChapterTreeItem(ch.id, ch.title, completion, ch.href);
-        });
+      // Root level: all chapters (even those without exercises yet,
+      // so users can right-click to create worksheets)
+      return this.template.chapters.map(ch => {
+        const exerciseIds = this.getAllExerciseIds(ch);
+        const completion = this.tracker!.getChapterCompletionPercent(ch.id, exerciseIds);
+        return new ChapterTreeItem(ch.id, ch.title, completion, ch.href);
+      });
     }
 
     if (element instanceof ChapterTreeItem) {
@@ -113,11 +112,6 @@ export class ExerciseTreeProvider implements vscode.TreeDataProvider<vscode.Tree
     );
   }
 
-  private chapterHasExercises(ch: ChapterTemplate): boolean {
-    if (ch.exercises.length > 0) return true;
-    return ch.sections.some(s => s.exercises.length > 0);
-  }
-
   private getAllExerciseIds(ch: ChapterTemplate): string[] {
     const ids = ch.exercises.map(ex => ex.id);
     for (const section of ch.sections) {
@@ -136,5 +130,9 @@ export class ExerciseTreeProvider implements vscode.TreeDataProvider<vscode.Tree
 
   getBaseDir(): string | undefined {
     return this.baseDir;
+  }
+
+  getChapters(): ChapterTemplate[] {
+    return this.template?.chapters ?? [];
   }
 }

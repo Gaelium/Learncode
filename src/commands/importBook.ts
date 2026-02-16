@@ -1,27 +1,41 @@
 import * as vscode from "vscode";
+import * as path from "path";
+import { unzipEpub } from "../epub/unzipper";
+import { parseOpf } from "../epub/opfParser";
 import { initializeWorkspace } from "../workspace/workspaceInitializer";
 import { ExerciseTreeProvider } from "../views/sidebarTreeProvider";
 import * as logger from "../util/logger";
 
 export function registerImportBookCommand(
   _context: vscode.ExtensionContext,
-  treeProvider: ExerciseTreeProvider,
+  _treeProvider: ExerciseTreeProvider,
 ): vscode.Disposable {
   return vscode.commands.registerCommand("learncode.importBook", async () => {
     try {
-      // Pick EPUB file
+      // Step 1: Pick EPUB file
       const fileUris = await vscode.window.showOpenDialog({
         canSelectMany: false,
         filters: { "EPUB Files": ["epub"] },
-        title: "Select an EPUB Programming Book",
+        title: "Select an EPUB Book",
       });
 
       if (!fileUris || fileUris.length === 0) return;
       const epubPath = fileUris[0].fsPath;
 
-      // Pick or create sandbox directory
+      // Step 2: Quick-parse metadata so we can show the book title
+      let bookTitle = "your book";
+      try {
+        const { zip, opfPath } = await unzipEpub(epubPath);
+        const { metadata } = await parseOpf(zip, opfPath);
+        bookTitle = metadata.title || bookTitle;
+      } catch {
+        // Non-fatal — we'll still import, just with a generic title
+      }
+
+      // Step 3: Pick workspace directory with a clear, contextual prompt
       const config = vscode.workspace.getConfiguration("learncode");
       const defaultLocation = config.get<string>("defaultSandboxLocation");
+      const epubDir = path.dirname(epubPath);
 
       const folderUris = await vscode.window.showOpenDialog({
         canSelectFiles: false,
@@ -29,32 +43,24 @@ export function registerImportBookCommand(
         canSelectMany: false,
         defaultUri: defaultLocation
           ? vscode.Uri.file(defaultLocation)
-          : undefined,
-        title: "Select Sandbox Directory (exercises will be created here)",
+          : vscode.Uri.file(epubDir),
+        title: `Choose a folder for the "${bookTitle}" exercise workspace`,
+        openLabel: "Create Workspace Here",
       });
 
       if (!folderUris || folderUris.length === 0) return;
       const sandboxDir = folderUris[0].fsPath;
 
-      // Run the pipeline
+      // Step 4: Run the import pipeline
       logger.info(`Importing ${epubPath} into ${sandboxDir}`);
       const result = await initializeWorkspace(epubPath, sandboxDir);
 
-      // Show success message
-      const message = `Imported ${result.chapterCount} chapters with ${result.exerciseCount} exercises.`;
-      const action = await vscode.window.showInformationMessage(
-        message,
-        "Open Workspace",
-        "OK",
+      // Step 5: Auto-open the workspace
+      vscode.window.showInformationMessage(
+        `Imported "${bookTitle}" — ${result.chapterCount} chapters, ${result.exerciseCount} exercises.`,
       );
-
-      if (action === "Open Workspace") {
-        const uri = vscode.Uri.file(result.sandboxDir);
-        await vscode.commands.executeCommand("vscode.openFolder", uri);
-      } else {
-        // Try to load in current workspace
-        await treeProvider.loadWorkspace(result.sandboxDir);
-      }
+      const uri = vscode.Uri.file(result.sandboxDir);
+      await vscode.commands.executeCommand("vscode.openFolder", uri);
     } catch (err) {
       logger.error("Import failed", err);
       vscode.window.showErrorMessage(

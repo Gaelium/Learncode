@@ -54,6 +54,94 @@ export function detectCodeBlocks(
     elementIndex++;
   });
 
+  // Springer-style code blocks: <div class="ParaTypeProgramcode"> or
+  // <div class="ProgramCode"> containing <div class="FixedLine"> children.
+  // These EPUBs use CSS-class-based styling with no <pre> or <code> elements.
+  $('div.ParaTypeProgramcode, div.ProgramCode').each((_, divEl) => {
+    const $div = $(divEl);
+    // Skip if already inside a <pre> or if this is a nested ProgramCode
+    // whose parent ParaTypeProgramcode was already processed
+    if ($div.parents('pre').length > 0) return;
+    if ($div.is('.ProgramCode') && $div.parents('.ParaTypeProgramcode').length > 0) return;
+
+    const lines: string[] = [];
+    $div.find('div.FixedLine').each((__, lineEl) => {
+      lines.push($(lineEl).text());
+    });
+
+    // Fallback: if no FixedLine divs, grab all text
+    if (lines.length === 0) {
+      const text = $div.text().trim();
+      if (!text) return;
+      lines.push(text);
+    }
+
+    const rawText = lines.join('\n').trim();
+    if (!rawText) return;
+
+    const precedingHeading = findPrecedingHeading($div, $);
+    const precedingText = findPrecedingParagraph($div, $);
+    const followingText = findFollowingParagraph($div, $);
+
+    const { language, confidence } = detectLanguage(rawText, undefined, bookLanguage);
+
+    const id = `${chapterHref}:block-${elementIndex}`;
+    blocks.push({
+      id,
+      content: rawText,
+      language,
+      languageConfidence: confidence,
+      type: 'unknown',
+      chapterHref,
+      precedingHeading,
+      precedingText,
+      followingText,
+      cssClasses: ['ProgramCode'],
+      lineCount: rawText.split('\n').length,
+      elementIndex,
+    });
+    elementIndex++;
+  });
+
+  // Generic class-based code blocks: elements with code-related CSS classes
+  // that weren't caught by the patterns above
+  const codeClassPattern = /\b(programlisting|sourcecode|literal-block|computeroutput)\b/i;
+  $('div, p').each((_, el) => {
+    const $el = $(el);
+    const cls = $el.attr('class') || '';
+    if (!codeClassPattern.test(cls)) return;
+    if ($el.parents('pre').length > 0) return;
+    // Skip Springer elements already handled
+    if (/ParaTypeProgramcode|ProgramCode|FixedLine/i.test(cls)) return;
+
+    const rawText = $el.text().trim();
+    if (!rawText || rawText.split('\n').length < 2) return;
+
+    const precedingHeading = findPrecedingHeading($el, $);
+    const precedingText = findPrecedingParagraph($el, $);
+    const followingText = findFollowingParagraph($el, $);
+
+    const classLang = extractLanguageFromClasses(cls.split(/\s+/).filter(Boolean));
+    const { language, confidence } = detectLanguage(rawText, classLang, bookLanguage);
+
+    const id = `${chapterHref}:block-${elementIndex}`;
+    blocks.push({
+      id,
+      content: rawText,
+      language,
+      languageConfidence: confidence,
+      type: 'unknown',
+      chapterHref,
+      precedingHeading,
+      precedingText,
+      followingText,
+      cssClasses: cls.split(/\s+/).filter(Boolean),
+      lineCount: rawText.split('\n').length,
+      elementIndex,
+    });
+    elementIndex++;
+  });
+
   // Find standalone <code> blocks that are NOT inside <pre> and NOT inline
   $('code').each((_, codeEl) => {
     const $code = $(codeEl);

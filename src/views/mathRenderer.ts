@@ -69,6 +69,43 @@ function renderMathInText(text: string): string {
   return text;
 }
 
+const KATEX_MACROS: Record<string, string> = {
+  // Uppercase upright Greek (\Up...)
+  '\\Updelta': '\\Delta',
+  '\\Upgamma': '\\Gamma',
+  '\\Uptheta': '\\Theta',
+  '\\Uplambda': '\\Lambda',
+  '\\Uppi': '\\Pi',
+  '\\Upsigma': '\\Sigma',
+  '\\Upomega': '\\Omega',
+  '\\Upphi': '\\Phi',
+  '\\Uppsi': '\\Psi',
+  // Lowercase upright Greek (\up...)
+  '\\upalpha': '\\alpha',
+  '\\upbeta': '\\beta',
+  '\\upgamma': '\\gamma',
+  '\\updelta': '\\delta',
+  '\\upepsilon': '\\epsilon',
+  '\\upzeta': '\\zeta',
+  '\\upeta': '\\eta',
+  '\\uptheta': '\\theta',
+  '\\upiota': '\\iota',
+  '\\upkappa': '\\kappa',
+  '\\uplambda': '\\lambda',
+  '\\upmu': '\\mu',
+  '\\upnu': '\\nu',
+  '\\upxi': '\\xi',
+  '\\uppi': '\\pi',
+  '\\uprho': '\\rho',
+  '\\upsigma': '\\sigma',
+  '\\uptau': '\\tau',
+  '\\upupsilon': '\\upsilon',
+  '\\upphi': '\\phi',
+  '\\upchi': '\\chi',
+  '\\uppsi': '\\psi',
+  '\\upomega': '\\omega',
+};
+
 function renderLatex(latex: string, displayMode: boolean): string {
   try {
     return katex.renderToString(latex.trim(), {
@@ -76,6 +113,7 @@ function renderLatex(latex: string, displayMode: boolean): string {
       displayMode,
       throwOnError: false,
       strict: false,
+      macros: KATEX_MACROS,
     });
   } catch (err) {
     logger.warn(`KaTeX render failed: ${err}`);

@@ -36,6 +36,14 @@ export class BookReaderPanel {
           case 'navigateTo':
             await this.navigateToIndex(message.index);
             break;
+          case 'linkClicked':
+            await this.handleLinkClick(message.href);
+            break;
+          case 'openExternal':
+            if (message.href) {
+              vscode.env.openExternal(vscode.Uri.parse(message.href));
+            }
+            break;
         }
       },
       null,
@@ -98,11 +106,16 @@ export class BookReaderPanel {
   }
 
   async navigateToHref(href: string): Promise<void> {
+    // Separate fragment from the file path
+    const hashIndex = href.indexOf('#');
+    const fragment = hashIndex >= 0 ? href.substring(hashIndex + 1) : '';
+    const cleanHref = hashIndex >= 0 ? href.substring(0, hashIndex) : href;
+
     const idx = this.spineHrefs.findIndex(
-      h => href.endsWith(h) || h.endsWith(href) || h === href
+      h => cleanHref.endsWith(h) || h.endsWith(cleanHref) || h === cleanHref
     );
     if (idx >= 0) {
-      await this.navigateToIndex(idx);
+      await this.navigateToIndex(idx, fragment);
     } else {
       logger.warn(`Could not find spine index for href: ${href}`);
       await this.navigateToIndex(0);
@@ -116,7 +129,37 @@ export class BookReaderPanel {
     }
   }
 
-  private async navigateToIndex(index: number): Promise<void> {
+  private async handleLinkClick(href: string): Promise<void> {
+    // Resolve relative href against the current spine entry's directory.
+    // Links in EPUB content are relative to the current file, e.g.
+    // "513120_3_En_8_Chapter.xhtml#Fig10" from within the html/ directory.
+    const currentSpineHref = this.spineHrefs[this.currentSpineIndex] || '';
+    const currentDir = path.posix.dirname(currentSpineHref);
+
+    const hashIndex = href.indexOf('#');
+    const fragment = hashIndex >= 0 ? href.substring(hashIndex + 1) : '';
+    const filePart = hashIndex >= 0 ? href.substring(0, hashIndex) : href;
+
+    // Resolve the file part relative to the current spine entry's directory
+    const resolvedFile = filePart
+      ? path.posix.join(currentDir, filePart)
+      : currentSpineHref;
+
+    // Find matching spine entry
+    const idx = this.spineHrefs.findIndex(h =>
+      h === resolvedFile ||
+      resolvedFile.endsWith(h) || h.endsWith(resolvedFile) ||
+      resolvedFile.endsWith('/' + h) || h.endsWith('/' + resolvedFile)
+    );
+
+    if (idx >= 0) {
+      await this.navigateToIndex(idx, fragment);
+    } else {
+      logger.warn(`Link target not found in spine: ${href} (resolved: ${resolvedFile})`);
+    }
+  }
+
+  private async navigateToIndex(index: number, fragment?: string): Promise<void> {
     if (index < 0 || index >= this.spineHrefs.length) return;
     this.currentSpineIndex = index;
 
@@ -143,10 +186,10 @@ export class BookReaderPanel {
     const withImgMath = replaceImgMath(sanitized);
     const withMath = renderMathInHtml(withImgMath);
     const withImages = this.rewriteImageSrcs(withMath, contentFileDir);
-    this.panel.webview.html = this.getWebviewHtml(withImages, index);
+    this.panel.webview.html = this.getWebviewHtml(withImages, index, fragment);
   }
 
-  private getWebviewHtml(bookContent: string, spineIndex: number): string {
+  private getWebviewHtml(bookContent: string, spineIndex: number, fragment?: string): string {
     const cssUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'media', 'book-reader.css')
     );
@@ -170,7 +213,7 @@ export class BookReaderPanel {
   <link rel="stylesheet" href="${cssUri}">
   <title>Book Reader</title>
 </head>
-<body>
+<body${fragment ? ` data-fragment="${fragment.replace(/"/g, '&quot;')}"` : ''}>
   <div class="navigation-bar">
     <button id="prevBtn" class="nav-btn" ${hasPrev ? '' : 'disabled'}>Previous</button>
     <span class="page-info">${spineIndex + 1} / ${this.spineHrefs.length}</span>
@@ -229,6 +272,69 @@ function sanitizeHtml(html: string): string {
   $('style').remove();
   $('link[rel="stylesheet"]').remove();
 
+  // Convert code-styled elements to <pre><code> blocks before we strip
+  // classes.  EPUB stylesheets are removed, so code that relies on CSS
+  // classes for monospace rendering must be converted structurally.
+
+  // Springer-style: <div class="ParaTypeProgramcode"> wrapping
+  // <div class="ProgramCode"> → <div class="LineGroup"> → <div class="FixedLine">
+  // Each FixedLine is one code line with spans for tokens.
+  $('div.ParaTypeProgramcode, div.ProgramCode').each((_, el) => {
+    const elem = $(el);
+    if (elem.parents('pre').length > 0) return;
+    // Already handled by a parent match
+    if (elem.is('.ProgramCode') && elem.parents('.ParaTypeProgramcode').length > 0
+        && elem.parent().is('pre')) return;
+
+    const lines: string[] = [];
+    elem.find('div.FixedLine').each((__, lineEl) => {
+      lines.push($(lineEl).text());
+    });
+
+    if (lines.length > 0) {
+      const code = lines.join('\n');
+      elem.replaceWith(`<pre><code>${escapeForPre(code)}</code></pre>`);
+    }
+  });
+
+  // Generic class-based detection for other EPUB publishers
+  const codeClassPattern = /\b(code|programlisting|sourcecode|literal-block|doctest|repl|console|screen|computeroutput|pre)\b/i;
+  $('p, div, span').each((_, el) => {
+    const elem = $(el);
+    const cls = elem.attr('class') || '';
+    if (!codeClassPattern.test(cls)) return;
+    if (elem.parents('pre').length > 0) return;
+    // Skip Springer elements already handled above
+    if (/ParaTypeProgramcode|ProgramCode|FixedLine|LineGroup/i.test(cls)) return;
+    const text = elem.text();
+    if (!text.trim()) return;
+    elem.replaceWith(`<pre><code>${escapeForPre(text)}</code></pre>`);
+  });
+
+  // Fallback: detect <p> elements containing >>> REPL lines
+  $('p').each((_, el) => {
+    const elem = $(el);
+    if (elem.parents('pre').length > 0) return;
+    const text = elem.text().trim();
+    if (text.startsWith('>>>') || text.startsWith('...')) {
+      elem.replaceWith(`<pre><code>${escapeForPre(elem.text())}</code></pre>`);
+    }
+  });
+
+  // Merge adjacent <pre> blocks produced by the conversions above
+  $('pre + pre').each((_, el) => {
+    const elem = $(el);
+    const prev = elem.prev('pre');
+    if (prev.length > 0) {
+      const prevCode = prev.find('code');
+      const currCode = elem.find('code');
+      const prevText = prevCode.length > 0 ? prevCode.text() : prev.text();
+      const currText = currCode.length > 0 ? currCode.text() : elem.text();
+      prev.html(`<code>${escapeForPre(prevText + '\n' + currText)}</code>`);
+      elem.remove();
+    }
+  });
+
   // Remove potentially dangerous attributes
   $('*').each((_, el) => {
     const elem = $(el);
@@ -241,6 +347,13 @@ function sanitizeHtml(html: string): string {
   // Extract body content (or whole doc if no body)
   const body = $('body');
   return body.length > 0 ? body.html() || '' : $.html() || '';
+}
+
+function escapeForPre(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 async function findFile(baseDir: string, href: string): Promise<string | null> {

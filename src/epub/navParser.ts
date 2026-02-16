@@ -142,9 +142,10 @@ function generateSpineToC(spine: SpineItem[]): TocEntry[] {
 
 function resolveNavHref(dir: string, href: string): string {
   const hashIndex = href.indexOf('#');
+  const fragment = hashIndex >= 0 ? href.substring(hashIndex) : '';
   const cleanHref = hashIndex >= 0 ? href.substring(0, hashIndex) : href;
-  if (!cleanHref) return '';
-  return path.posix.join(dir, cleanHref);
+  if (!cleanHref) return fragment;
+  return path.posix.join(dir, cleanHref) + fragment;
 }
 
 function findSpineIndex(href: string, spine: SpineItem[]): number | undefined {

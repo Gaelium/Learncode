@@ -45,6 +45,11 @@
         "command": "learncode.markComplete",
         "title": "LearnCode: Mark Exercise Complete",
         "icon": "$(check)"
+      },
+      {
+        "command": "learncode.createWorksheet",
+        "title": "LearnCode: New Worksheet",
+        "icon": "$(add)"
       }
     ],
     "viewsContainers": {
@@ -67,6 +72,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "learncode.createWorksheet",
+          "when": "view == learncode.exerciseTree",
+          "group": "navigation"
+        },
+        {
           "command": "learncode.refreshTree",
           "when": "view == learncode.exerciseTree",
           "group": "navigation"
@@ -84,6 +94,10 @@
         },
         {
           "command": "learncode.openBookReader",
+          "when": "view == learncode.exerciseTree && viewItem == chapter"
+        },
+        {
+          "command": "learncode.createWorksheet",
           "when": "view == learncode.exerciseTree && viewItem == chapter"
         }
       ]

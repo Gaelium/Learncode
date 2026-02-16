@@ -10,6 +10,7 @@ import { registerOpenExerciseCommand } from './commands/openExercise';
 import { registerResetExerciseCommand } from './commands/resetExercise';
 import { registerOpenBookReaderCommand } from './commands/openBookReader';
 import { registerCreateSandboxCommand } from './commands/createSandbox';
+import { registerCreateWorksheetCommand } from './commands/createWorksheet';
 
 export function activate(context: vscode.ExtensionContext) {
   // Initialize core systems
@@ -31,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(registerResetExerciseCommand(context, treeProvider));
   context.subscriptions.push(registerOpenBookReaderCommand(context, treeProvider));
   context.subscriptions.push(registerCreateSandboxCommand(context, treeProvider));
+  context.subscriptions.push(registerCreateWorksheetCommand(context, treeProvider));
 
   // Refresh tree command
   context.subscriptions.push(
