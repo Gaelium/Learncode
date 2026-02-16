@@ -1,0 +1,129 @@
+{
+  "name": "learncode",
+  "displayName": "LearnCode",
+  "description": "Import EPUB programming books, extract code exercises, and learn interactively",
+  "version": "0.1.0",
+  "publisher": "learncode",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Education"
+  ],
+  "activationEvents": [
+    "workspaceContains:.learncode"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "learncode.importBook",
+        "title": "LearnCode: Import EPUB Book"
+      },
+      {
+        "command": "learncode.createSandbox",
+        "title": "LearnCode: Create Sandbox from Template"
+      },
+      {
+        "command": "learncode.openExercise",
+        "title": "LearnCode: Open Exercise"
+      },
+      {
+        "command": "learncode.resetExercise",
+        "title": "LearnCode: Reset Exercise"
+      },
+      {
+        "command": "learncode.openBookReader",
+        "title": "LearnCode: Open Book Reader"
+      },
+      {
+        "command": "learncode.refreshTree",
+        "title": "LearnCode: Refresh Exercise Tree",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "learncode.markComplete",
+        "title": "LearnCode: Mark Exercise Complete",
+        "icon": "$(check)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "learncode",
+          "title": "LearnCode",
+          "icon": "media/learncode-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "learncode": [
+        {
+          "id": "learncode.exerciseTree",
+          "name": "Exercises"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "learncode.refreshTree",
+          "when": "view == learncode.exerciseTree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "learncode.markComplete",
+          "when": "view == learncode.exerciseTree && viewItem == exercise",
+          "group": "inline"
+        },
+        {
+          "command": "learncode.resetExercise",
+          "when": "view == learncode.exerciseTree && viewItem == exercise"
+        },
+        {
+          "command": "learncode.openBookReader",
+          "when": "view == learncode.exerciseTree && viewItem == chapter"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "LearnCode",
+      "properties": {
+        "learncode.defaultSandboxLocation": {
+          "type": "string",
+          "default": "",
+          "description": "Default directory for creating exercise sandboxes"
+        },
+        "learncode.autoOpenExercise": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the exercise file when clicking in the sidebar"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/katex": "^0.16.8",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "js-yaml": "^4.1.0",
+    "jszip": "^3.10.1",
+    "katex": "^0.16.28"
+  }
+}
