@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as cheerio from 'cheerio';
 import * as logger from '../util/logger';
-import { renderMathInHtml } from './mathRenderer';
+import { replaceImgMath, renderMathInHtml } from './mathRenderer';
 
 export class BookReaderPanel {
   public static currentPanel: BookReaderPanel | undefined;
@@ -140,7 +140,8 @@ export class BookReaderPanel {
     }
 
     const sanitized = sanitizeHtml(html);
-    const withMath = renderMathInHtml(sanitized);
+    const withImgMath = replaceImgMath(sanitized);
+    const withMath = renderMathInHtml(withImgMath);
     const withImages = this.rewriteImageSrcs(withMath, contentFileDir);
     this.panel.webview.html = this.getWebviewHtml(withImages, index);
   }
@@ -148,6 +149,9 @@ export class BookReaderPanel {
   private getWebviewHtml(bookContent: string, spineIndex: number): string {
     const cssUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'media', 'book-reader.css')
+    );
+    const katexCssUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, 'media', 'katex.min.css')
     );
     const jsUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'media', 'book-reader.js')
@@ -160,8 +164,9 @@ export class BookReaderPanel {
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src ${this.panel.webview.cspSource}; img-src ${this.panel.webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src ${this.panel.webview.cspSource}; img-src ${this.panel.webview.cspSource}; font-src ${this.panel.webview.cspSource};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${katexCssUri}">
   <link rel="stylesheet" href="${cssUri}">
   <title>Book Reader</title>
 </head>
@@ -218,10 +223,11 @@ export class BookReaderPanel {
 function sanitizeHtml(html: string): string {
   const $ = cheerio.load(html, { xmlMode: false });
 
-  // Remove scripts and styles
+  // Remove scripts and styles — EPUB stylesheets are designed for
+  // white-background readers and conflict with VS Code theming
   $('script').remove();
+  $('style').remove();
   $('link[rel="stylesheet"]').remove();
-  // Keep inline styles but remove external stylesheet links
 
   // Remove potentially dangerous attributes
   $('*').each((_, el) => {

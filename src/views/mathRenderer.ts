@@ -8,6 +8,22 @@ import * as logger from '../util/logger';
  * Only processes text content between HTML tags — never touches
  * attribute values, so <img alt="$x$" ...> stays intact.
  */
+/**
+ * Replaces <img> tags whose `alt` attribute contains LaTeX ($$...$$)
+ * with KaTeX-rendered HTML. This handles EPUBs that store math as
+ * raster PNGs with LaTeX in the alt text.
+ */
+export function replaceImgMath(html: string): string {
+  return html.replace(
+    /<img\s[^>]*alt=["']\$\$(.*?)\$\$["'][^>]*\/?>/gi,
+    (_, latex) => {
+      const trimmed = unescapeHtml(latex).trim();
+      const displayMode = trimmed.startsWith('\\displaystyle');
+      return renderLatex(trimmed, displayMode);
+    }
+  );
+}
+
 export function renderMathInHtml(html: string): string {
   // Split HTML into tags and text segments.
   // Tags (captured group) appear at odd indices, text at even indices.
@@ -56,7 +72,7 @@ function renderMathInText(text: string): string {
 function renderLatex(latex: string, displayMode: boolean): string {
   try {
     return katex.renderToString(latex.trim(), {
-      output: 'mathml',
+      output: 'htmlAndMathml',
       displayMode,
       throwOnError: false,
       strict: false,

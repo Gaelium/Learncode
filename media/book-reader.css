@@ -72,6 +72,10 @@ body {
   height: auto;
 }
 
+.book-content .katex {
+  color: var(--vscode-foreground);
+}
+
 .book-content table {
   border-collapse: collapse;
   width: 100%;
