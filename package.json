@@ -18,7 +18,7 @@
     "commands": [
       {
         "command": "learncode.importBook",
-        "title": "LearnCode: Import EPUB Book"
+        "title": "LearnCode: Import Book"
       },
       {
         "command": "learncode.createSandbox",
@@ -119,8 +119,9 @@
     }
   },
   "scripts": {
-    "compile": "node esbuild.js",
-    "watch": "node esbuild.js --watch",
+    "prebuild": "node copy-pdfjs.js",
+    "compile": "node copy-pdfjs.js && node esbuild.js",
+    "watch": "node copy-pdfjs.js && node esbuild.js --watch",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
@@ -138,6 +139,7 @@
     "cheerio": "^1.0.0-rc.12",
     "js-yaml": "^4.1.0",
     "jszip": "^3.10.1",
-    "katex": "^0.16.28"
+    "katex": "^0.16.28",
+    "pdfjs-dist": "^5.4.624"
   }
 }

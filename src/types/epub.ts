@@ -6,6 +6,7 @@ export interface EpubMetadata {
   publisher?: string;
   date?: string;
   description?: string;
+  format?: 'epub' | 'pdf';
 }
 
 export interface ManifestItem {

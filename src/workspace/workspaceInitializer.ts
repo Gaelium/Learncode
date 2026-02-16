@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { parseEpub } from '../epub/index';
+import { parsePdf, mapOutlineToToc, extractChapterText, detectCodeBlocksFromText } from '../pdf/index';
 import { detectCodeBlocks } from '../analysis/codeBlockDetector';
 import { classifyCodeBlocks } from '../analysis/codeBlockClassifier';
 import { mapStructure } from '../analysis/structureMapper';
@@ -106,6 +107,106 @@ export async function initializeWorkspace(
       // Initialize progress tracker
       const tracker = new ProgressTracker(sandboxDir);
       tracker.setBookTitle(epub.metadata.title);
+      await tracker.save();
+
+      progress.report({ message: 'Done!', increment: 10 });
+
+      return {
+        exerciseCount: exercises.length,
+        chapterCount: chapters.length,
+        sandboxDir,
+      };
+    }
+  );
+}
+
+export async function initializeWorkspacePdf(
+  pdfPath: string,
+  sandboxDir: string
+): Promise<InitResult> {
+  return vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'LearnCode: Importing PDF',
+      cancellable: false,
+    },
+    async (progress) => {
+      // Step 1: Parse PDF
+      progress.report({ message: 'Parsing PDF...', increment: 0 });
+      const pdf = await parsePdf(pdfPath);
+      logger.info(`Parsed "${pdf.metadata.title}"`);
+
+      // Step 2: Map outline to TocEntry[]
+      progress.report({ message: 'Mapping chapter structure...', increment: 15 });
+      const toc = mapOutlineToToc(pdf.outline, pdf.pageCount);
+      const chapters = mapStructure(toc);
+      logger.info(`Mapped ${chapters.length} chapters`);
+
+      // Step 3: Extract text per chapter and detect code blocks
+      progress.report({ message: 'Detecting code blocks...', increment: 15 });
+      const chapterText = extractChapterText(pdf.textByPage, chapters);
+      let allBlocks: CodeBlock[] = [];
+      for (const [href, text] of chapterText) {
+        const blocks = detectCodeBlocksFromText(href, text, pdf.metadata.language);
+        allBlocks = allBlocks.concat(blocks);
+      }
+      logger.info(`Detected ${allBlocks.length} code blocks from PDF text`);
+
+      // Step 4: Classify code blocks
+      progress.report({ message: 'Classifying code blocks...', increment: 10 });
+      allBlocks = classifyCodeBlocks(allBlocks);
+      const typeCounts = new Map<string, number>();
+      for (const b of allBlocks) {
+        typeCounts.set(b.type, (typeCounts.get(b.type) || 0) + 1);
+      }
+      logger.info(`Classification: ${[...typeCounts.entries()].map(([k, v]) => `${k}=${v}`).join(', ')}`);
+
+      // Step 5: Assemble exercises
+      progress.report({ message: 'Assembling exercises...', increment: 10 });
+      const exercises = assembleExercises(chapters, allBlocks);
+      logger.info(`Assembled ${exercises.length} exercises`);
+
+      // Step 6: Generate template YAML
+      progress.report({ message: 'Generating template...', increment: 10 });
+      const metadata = {
+        title: pdf.metadata.title,
+        creator: pdf.metadata.creator,
+        language: pdf.metadata.language,
+        identifier: '',
+        format: 'pdf' as const,
+      };
+      await generateTemplateYaml(sandboxDir, metadata, chapters, exercises);
+
+      // Step 7: Generate sandbox directories
+      progress.report({ message: 'Creating exercise sandboxes...', increment: 20 });
+      await generateSandbox(sandboxDir, chapters, exercises);
+
+      // Step 8: Copy PDF and write metadata/spine
+      progress.report({ message: 'Storing book content...', increment: 10 });
+      const bookDir = path.join(sandboxDir, '.learncode', 'book');
+      await fs.promises.mkdir(bookDir, { recursive: true });
+
+      // Copy PDF file
+      await fs.promises.copyFile(pdfPath, path.join(bookDir, 'book.pdf'));
+
+      // Store metadata with format field
+      await fs.promises.writeFile(
+        path.join(sandboxDir, '.learncode', 'metadata.json'),
+        JSON.stringify(metadata, null, 2),
+        'utf-8'
+      );
+
+      // Store spine as page numbers array
+      const pageNumbers = Array.from({ length: pdf.pageCount }, (_, i) => i + 1);
+      await fs.promises.writeFile(
+        path.join(sandboxDir, '.learncode', 'spine.json'),
+        JSON.stringify(pageNumbers, null, 2),
+        'utf-8'
+      );
+
+      // Initialize progress tracker
+      const tracker = new ProgressTracker(sandboxDir);
+      tracker.setBookTitle(pdf.metadata.title);
       await tracker.save();
 
       progress.report({ message: 'Done!', increment: 10 });

@@ -5,6 +5,7 @@ import { initLogger, dispose as disposeLogger, info } from './util/logger';
 import { initTemplates } from './scaffold/templateRegistry';
 import { ExerciseTreeProvider } from './views/sidebarTreeProvider';
 import { BookReaderPanel } from './views/bookReaderPanel';
+import { PdfReaderPanel } from './views/pdfReaderPanel';
 import { registerImportBookCommand } from './commands/importBook';
 import { registerOpenExerciseCommand } from './commands/openExercise';
 import { registerResetExerciseCommand } from './commands/resetExercise';
@@ -54,12 +55,21 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Register WebView serializer for book reader persistence
+  // Register WebView serializers for book reader persistence
   vscode.window.registerWebviewPanelSerializer('learncode.bookReader', {
-    async deserializeWebviewPanel(panel: vscode.WebviewPanel, state: any) {
+    async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: any) {
       const baseDir = treeProvider.getBaseDir();
       if (baseDir) {
         BookReaderPanel.revive(panel, context.extensionUri, baseDir);
+      }
+    },
+  });
+
+  vscode.window.registerWebviewPanelSerializer('learncode.pdfReader', {
+    async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: any) {
+      const baseDir = treeProvider.getBaseDir();
+      if (baseDir) {
+        PdfReaderPanel.revive(panel, context.extensionUri, baseDir);
       }
     },
   });
