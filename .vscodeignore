@@ -11,9 +11,6 @@ copy-pdfjs.js
 tsconfig.json
 vitest.config.ts
 package-lock.json
-media/pdfjs/pdf.mjs
-media/pdfjs/pdf.sandbox.mjs
-media/pdfjs/pdf.worker.mjs
 **/*.test.ts
 **/__mocks__/**
 **/test/**

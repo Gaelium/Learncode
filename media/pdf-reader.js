@@ -105,6 +105,8 @@
       canvas.height = viewport.height;
       pageView.style.width = viewport.width + 'px';
       pageView.style.height = viewport.height + 'px';
+      highlightLayer.style.width = viewport.width + 'px';
+      highlightLayer.style.height = viewport.height + 'px';
 
       await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
@@ -200,9 +202,18 @@
 
   function getTextContext(fullText, selText, charsBefore, charsAfter) {
     var idx = fullText.indexOf(selText);
+    var matchLen = selText.length;
+
+    // Fallback: whitespace-flexible matching (getSelection adds \n between
+    // spans but textContent concatenates without separators)
+    if (idx < 0) {
+      var result = flexMatch(fullText, selText);
+      if (result) { idx = result.start; matchLen = result.end - result.start; }
+    }
+
     if (idx < 0) return { prefix: '', suffix: '' };
     var prefix = fullText.substring(Math.max(0, idx - charsBefore), idx);
-    var suffix = fullText.substring(idx + selText.length, idx + selText.length + charsAfter);
+    var suffix = fullText.substring(idx + matchLen, idx + matchLen + charsAfter);
     return { prefix: prefix, suffix: suffix };
   }
 
@@ -276,7 +287,7 @@
 
     if (!currentAnnotations.length) return;
 
-    var spans = textLayerDiv.querySelectorAll('span');
+    var spans = textLayerDiv.querySelectorAll('span[role="presentation"]');
     if (!spans.length) return;
 
     // Build concatenated text with span boundary info
@@ -290,12 +301,21 @@
 
     var pageViewRect = pageView.getBoundingClientRect();
 
+    console.log('[learncode] applyAnnotations: spans=' + spans.length +
+      ', fullText.length=' + fullText.length +
+      ', annotations=' + currentAnnotations.length);
+
     for (var a = 0; a < currentAnnotations.length; a++) {
       var ann = currentAnnotations[a];
-      var idx = findAnnotationIndex(fullText, ann);
-      if (idx < 0) continue;
+      var match = findAnnotationIndex(fullText, ann);
+      if (!match) {
+        console.log('[learncode] annotation ' + ann.id + ': no match found');
+        continue;
+      }
 
-      var endIdx = idx + ann.selectedText.length;
+      var idx = match.start;
+      var endIdx = match.end;
+      var highlightedSpans = 0;
       for (var s = 0; s < entries.length; s++) {
         var e = entries[s];
         if (e.end > idx && e.start < endIdx) {
@@ -313,19 +333,49 @@
           rect.style.width = spanRect.width + 'px';
           rect.style.height = spanRect.height + 'px';
           highlightLayer.appendChild(rect);
+          highlightedSpans++;
         }
       }
+      console.log('[learncode] annotation ' + ann.id + ': highlighted ' + highlightedSpans + ' spans');
     }
+  }
+
+  // Whitespace-flexible search: splits text on whitespace, builds a regex that
+  // allows zero-or-more whitespace between chunks.  This handles the mismatch
+  // between getSelection().toString() (adds \n between spans) and textContent
+  // (concatenates without separators).
+  function flexMatch(fullText, selText) {
+    var chunks = selText.split(/\s+/).filter(function (c) { return c.length > 0; });
+    if (chunks.length === 0) return null;
+    var pattern = chunks.map(function (c) {
+      return c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }).join('\\s*');
+    try {
+      var m = new RegExp(pattern).exec(fullText);
+      if (m) return { start: m.index, end: m.index + m[0].length };
+    } catch (e) { /* invalid regex — fall through */ }
+    return null;
   }
 
   function findAnnotationIndex(fullText, ann) {
     var idx = fullText.indexOf(ann.selectedText);
-    if (idx >= 0 && ann.textPrefix) {
-      var before = fullText.substring(Math.max(0, idx - 40), idx);
-      if (before.indexOf(ann.textPrefix.slice(-15)) >= 0) return idx;
+    if (idx >= 0) {
+      if (ann.textPrefix) {
+        var before = fullText.substring(Math.max(0, idx - 40), idx);
+        if (before.indexOf(ann.textPrefix.slice(-15)) >= 0) {
+          console.log('[learncode] annotation ' + ann.id + ': exact match with prefix');
+          return { start: idx, end: idx + ann.selectedText.length };
+        }
+      }
+      console.log('[learncode] annotation ' + ann.id + ': exact match (indexOf)');
+      return { start: idx, end: idx + ann.selectedText.length };
     }
-    if (idx >= 0) return idx;
-    return -1;
+    // Fallback: whitespace-flexible matching
+    var result = flexMatch(fullText, ann.selectedText);
+    if (result) {
+      console.log('[learncode] annotation ' + ann.id + ': flexMatch hit');
+    }
+    return result;
   }
 
   // --- Annotation: tooltip on hover ---
@@ -438,6 +488,8 @@
         renderPage(message.page);
         break;
       case 'loadAnnotations':
+        console.log('[learncode] loadAnnotations received: ' +
+          (message.annotations ? message.annotations.length : 0) + ' annotations');
         applyAnnotations(message.annotations);
         break;
       case 'highlightAnnotation':

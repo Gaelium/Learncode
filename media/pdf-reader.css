@@ -39,6 +39,10 @@ body {
   opacity: 0.25;
   line-height: 1;
   z-index: 2;
+  /* pdfjs v5 uses CSS custom properties for font sizing */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
 }
 
 /* Highlight overlay — sits between canvas and text layer at full opacity */
@@ -50,13 +54,28 @@ body {
   z-index: 1;
 }
 
-.textLayer span,
-.textLayer br {
+.textLayer :is(span, br) {
   color: transparent;
   position: absolute;
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+}
+
+/* pdfjs v5: leaf text spans sized via --font-height custom property */
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+/* pdfjs v5: markedContent wrappers must not create their own box */
+.textLayer .markedContent {
+  display: contents;
 }
 
 .textLayer ::selection {

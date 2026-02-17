@@ -3,4 +3,5 @@ dist/
 *.vsix
 .DS_Store
 coverage/
+media/pdfjs/
 .claude/

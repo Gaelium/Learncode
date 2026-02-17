@@ -128,6 +128,7 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "prebuild": "node copy-pdfjs.js",
     "compile": "node copy-pdfjs.js && node esbuild.js",
     "watch": "node copy-pdfjs.js && node esbuild.js --watch",
