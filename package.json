@@ -1,9 +1,14 @@
 {
   "name": "learncode",
   "displayName": "LearnCode",
-  "description": "Import EPUB programming books, extract code exercises, and learn interactively",
-  "version": "0.1.0",
-  "publisher": "learncode",
+  "description": "Import EPUB and PDF programming books, extract code exercises, and learn interactively with annotations and progress tracking",
+  "version": "1.0.0",
+  "publisher": "Gaelium",
+  "icon": "media/icon.jpg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gaelium/Learncode"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
