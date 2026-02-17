@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ProgressData, ExerciseProgress, ExerciseStatus } from '../types/progress';
+import { ProgressData, ExerciseProgress, ExerciseStatus, ReadingPosition } from '../types/progress';
 import * as logger from '../util/logger';
 
 export class ProgressTracker {
@@ -101,6 +101,15 @@ export class ProgressTracker {
       id => this.getExerciseStatus(id) === 'completed'
     ).length;
     return Math.round((completed / allExerciseIds.length) * 100);
+  }
+
+  getReadingPosition(): ReadingPosition | undefined {
+    return this.data.readingPosition;
+  }
+
+  async setReadingPosition(pos: ReadingPosition): Promise<void> {
+    this.data.readingPosition = pos;
+    await this.save();
   }
 
   getAllData(): ProgressData {

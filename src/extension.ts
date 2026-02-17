@@ -12,6 +12,7 @@ import { registerResetExerciseCommand } from './commands/resetExercise';
 import { registerOpenBookReaderCommand } from './commands/openBookReader';
 import { registerCreateSandboxCommand } from './commands/createSandbox';
 import { registerCreateWorksheetCommand } from './commands/createWorksheet';
+import { AnnotationStore } from './workspace/annotationStore';
 
 export function activate(context: vscode.ExtensionContext) {
   // Initialize core systems
@@ -60,7 +61,10 @@ export function activate(context: vscode.ExtensionContext) {
     async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: any) {
       const baseDir = treeProvider.getBaseDir();
       if (baseDir) {
-        BookReaderPanel.revive(panel, context.extensionUri, baseDir);
+        const tracker = treeProvider.getTracker();
+        const store = new AnnotationStore(baseDir);
+        await store.load();
+        BookReaderPanel.revive(panel, context.extensionUri, baseDir, tracker, store);
       }
     },
   });
@@ -69,10 +73,82 @@ export function activate(context: vscode.ExtensionContext) {
     async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: any) {
       const baseDir = treeProvider.getBaseDir();
       if (baseDir) {
-        PdfReaderPanel.revive(panel, context.extensionUri, baseDir);
+        const tracker = treeProvider.getTracker();
+        const store = new AnnotationStore(baseDir);
+        await store.load();
+        PdfReaderPanel.revive(panel, context.extensionUri, baseDir, tracker, store);
       }
     },
   });
+
+  // View all annotations command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('learncode.viewAnnotations', async () => {
+      const baseDir = treeProvider.getBaseDir();
+      if (!baseDir) {
+        vscode.window.showWarningMessage('No LearnCode workspace loaded.');
+        return;
+      }
+
+      const store = new AnnotationStore(baseDir);
+      await store.load();
+      const annotations = store.getAllAnnotations();
+
+      if (annotations.length === 0) {
+        vscode.window.showInformationMessage('No annotations yet. Select text in the reader and click "Add Note" to create one.');
+        return;
+      }
+
+      // Detect format to label correctly
+      const metadataPath = path.join(baseDir, '.learncode', 'metadata.json');
+      let format: 'pdf' | 'epub' = 'epub';
+      try {
+        const raw = await fs.promises.readFile(metadataPath, 'utf-8');
+        const metadata = JSON.parse(raw);
+        if (metadata.format === 'pdf') { format = 'pdf'; }
+      } catch { /* default epub */ }
+
+      const label = format === 'pdf' ? 'Page' : 'Section';
+
+      interface AnnotationQuickPickItem extends vscode.QuickPickItem {
+        pageOrSpineIndex: number;
+      }
+
+      const items: AnnotationQuickPickItem[] = annotations.map(a => ({
+        label: a.selectedText.length > 60 ? a.selectedText.substring(0, 60) + '...' : a.selectedText,
+        description: a.note || '(highlight only)',
+        detail: `${label} ${format === 'pdf' ? a.pageOrSpineIndex : a.pageOrSpineIndex + 1}`,
+        pageOrSpineIndex: a.pageOrSpineIndex,
+      }));
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: `${annotations.length} annotation${annotations.length === 1 ? '' : 's'} — select to navigate`,
+      });
+
+      if (picked) {
+        if (format === 'pdf') {
+          if (PdfReaderPanel.currentPanel) {
+            PdfReaderPanel.currentPanel.navigateToPage(picked.pageOrSpineIndex);
+          } else {
+            const tracker = treeProvider.getTracker();
+            const annotationStore = new AnnotationStore(baseDir);
+            await annotationStore.load();
+            await PdfReaderPanel.createOrShow(context.extensionUri, baseDir, picked.pageOrSpineIndex, tracker, annotationStore);
+          }
+        } else {
+          if (BookReaderPanel.currentPanel) {
+            await BookReaderPanel.currentPanel.navigateToSpineIndex(picked.pageOrSpineIndex);
+          } else {
+            const tracker = treeProvider.getTracker();
+            const annotationStore = new AnnotationStore(baseDir);
+            await annotationStore.load();
+            const panel = await BookReaderPanel.createOrShow(context.extensionUri, baseDir, undefined, tracker, annotationStore);
+            await panel.navigateToSpineIndex(picked.pageOrSpineIndex);
+          }
+        }
+      }
+    })
+  );
 
   // Auto-detect LearnCode workspace on open
   autoDetectWorkspace(treeProvider);

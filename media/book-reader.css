@@ -147,3 +147,78 @@ body {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+
+/* Annotation highlights */
+mark.learncode-annotation {
+  background-color: rgba(255, 235, 59, 0.4);
+  border-radius: 2px;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* Floating "Add Note" button */
+#annotateBtn {
+  position: absolute;
+  z-index: 100;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+#annotateBtn:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Annotation tooltip */
+.annotation-tooltip {
+  position: absolute;
+  z-index: 101;
+  background-color: var(--vscode-editorHoverWidget-background, #2d2d30);
+  color: var(--vscode-editorHoverWidget-foreground, #cccccc);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  max-width: 300px;
+  word-wrap: break-word;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Annotation popup (click to show note + delete) */
+.annotation-popup {
+  position: absolute;
+  z-index: 102;
+  background-color: var(--vscode-editorHoverWidget-background, #2d2d30);
+  color: var(--vscode-editorHoverWidget-foreground, #cccccc);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  max-width: 320px;
+  word-wrap: break-word;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.annotation-popup-note {
+  margin-bottom: 6px;
+}
+
+.annotation-popup-delete {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.annotation-popup-delete:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}

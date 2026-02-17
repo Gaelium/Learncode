@@ -29,6 +29,7 @@
   var container = document.getElementById('pdf-container');
   var pageView = document.getElementById('page-view');
   var canvas = document.getElementById('pdf-canvas');
+  var highlightLayer = document.getElementById('highlight-layer');
   var textLayerDiv = document.getElementById('text-layer');
   var pageInput = document.getElementById('pageInput');
   var pageCountEl = document.getElementById('pageCount');
@@ -38,6 +39,7 @@
   var pdfDoc = null;
   var rendering = false;
   var pendingPage = null;
+  var currentAnnotations = [];
 
   function showFatalError(msg) {
     var el = document.getElementById('pdf-container');
@@ -178,6 +180,216 @@
     }
   }
 
+  // --- Annotation: floating button ---
+
+  var annotateBtn = document.createElement('button');
+  annotateBtn.id = 'annotateBtn';
+  annotateBtn.textContent = 'Add Note';
+  annotateBtn.style.display = 'none';
+  document.body.appendChild(annotateBtn);
+
+  var tooltip = document.createElement('div');
+  tooltip.className = 'annotation-tooltip';
+  tooltip.style.display = 'none';
+  document.body.appendChild(tooltip);
+
+  var annotationPopup = document.createElement('div');
+  annotationPopup.className = 'annotation-popup';
+  annotationPopup.style.display = 'none';
+  document.body.appendChild(annotationPopup);
+
+  function getTextContext(fullText, selText, charsBefore, charsAfter) {
+    var idx = fullText.indexOf(selText);
+    if (idx < 0) return { prefix: '', suffix: '' };
+    var prefix = fullText.substring(Math.max(0, idx - charsBefore), idx);
+    var suffix = fullText.substring(idx + selText.length, idx + selText.length + charsAfter);
+    return { prefix: prefix, suffix: suffix };
+  }
+
+  textLayerDiv.addEventListener('mouseup', function (e) {
+    var sel = window.getSelection();
+    var selText = sel ? sel.toString().trim() : '';
+    if (!selText) {
+      annotateBtn.style.display = 'none';
+      return;
+    }
+
+    // Position button near mouse
+    annotateBtn.style.left = e.pageX + 'px';
+    annotateBtn.style.top = (e.pageY - 35) + 'px';
+    annotateBtn.style.display = 'block';
+  });
+
+  annotateBtn.addEventListener('mousedown', function (e) {
+    e.preventDefault(); // keep selection alive
+  });
+
+  annotateBtn.addEventListener('click', function () {
+    var sel = window.getSelection();
+    var selText = sel ? sel.toString().trim() : '';
+    if (!selText) {
+      annotateBtn.style.display = 'none';
+      return;
+    }
+
+    var fullText = textLayerDiv.textContent || '';
+    var ctx = getTextContext(fullText, selText, 30, 30);
+
+    vscode.postMessage({
+      command: 'addAnnotation',
+      selectedText: selText,
+      textPrefix: ctx.prefix,
+      textSuffix: ctx.suffix,
+      pageOrSpineIndex: currentPage,
+    });
+
+    annotateBtn.style.display = 'none';
+    sel.removeAllRanges();
+  });
+
+  // Hide button/popup on click elsewhere
+  document.addEventListener('mousedown', function (e) {
+    if (e.target !== annotateBtn && !annotateBtn.contains(e.target)) {
+      annotateBtn.style.display = 'none';
+    }
+    if (!annotationPopup.contains(e.target) &&
+        !(e.target.classList && e.target.classList.contains('learncode-highlight'))) {
+      annotationPopup.style.display = 'none';
+    }
+  });
+
+  // --- Annotation: highlight rendering ---
+
+  function applyAnnotations(annotations) {
+    currentAnnotations = annotations || [];
+
+    // Clear existing highlights from text layer spans
+    var highlighted = textLayerDiv.querySelectorAll('.learncode-highlight');
+    for (var h = 0; h < highlighted.length; h++) {
+      highlighted[h].classList.remove('learncode-highlight');
+      highlighted[h].removeAttribute('data-note');
+      highlighted[h].removeAttribute('data-annotation-id');
+    }
+
+    // Clear overlay rects
+    highlightLayer.innerHTML = '';
+
+    if (!currentAnnotations.length) return;
+
+    var spans = textLayerDiv.querySelectorAll('span');
+    if (!spans.length) return;
+
+    // Build concatenated text with span boundary info
+    var entries = [];
+    var fullText = '';
+    for (var i = 0; i < spans.length; i++) {
+      var spanText = spans[i].textContent || '';
+      entries.push({ span: spans[i], start: fullText.length, end: fullText.length + spanText.length });
+      fullText += spanText;
+    }
+
+    var pageViewRect = pageView.getBoundingClientRect();
+
+    for (var a = 0; a < currentAnnotations.length; a++) {
+      var ann = currentAnnotations[a];
+      var idx = findAnnotationIndex(fullText, ann);
+      if (idx < 0) continue;
+
+      var endIdx = idx + ann.selectedText.length;
+      for (var s = 0; s < entries.length; s++) {
+        var e = entries[s];
+        if (e.end > idx && e.start < endIdx) {
+          // Tag the text layer span for hover/click interaction
+          e.span.classList.add('learncode-highlight');
+          e.span.setAttribute('data-note', ann.note || '');
+          e.span.setAttribute('data-annotation-id', ann.id);
+
+          // Create a visible rect in the overlay layer
+          var spanRect = e.span.getBoundingClientRect();
+          var rect = document.createElement('div');
+          rect.className = 'learncode-highlight-rect';
+          rect.style.left = (spanRect.left - pageViewRect.left) + 'px';
+          rect.style.top = (spanRect.top - pageViewRect.top) + 'px';
+          rect.style.width = spanRect.width + 'px';
+          rect.style.height = spanRect.height + 'px';
+          highlightLayer.appendChild(rect);
+        }
+      }
+    }
+  }
+
+  function findAnnotationIndex(fullText, ann) {
+    var idx = fullText.indexOf(ann.selectedText);
+    if (idx >= 0 && ann.textPrefix) {
+      var before = fullText.substring(Math.max(0, idx - 40), idx);
+      if (before.indexOf(ann.textPrefix.slice(-15)) >= 0) return idx;
+    }
+    if (idx >= 0) return idx;
+    return -1;
+  }
+
+  // --- Annotation: tooltip on hover ---
+
+  textLayerDiv.addEventListener('mouseover', function (e) {
+    var target = e.target;
+    if (target.classList && target.classList.contains('learncode-highlight')) {
+      var note = target.getAttribute('data-note');
+      if (note) {
+        tooltip.textContent = note;
+        tooltip.style.left = e.pageX + 'px';
+        tooltip.style.top = (e.pageY - 30) + 'px';
+        tooltip.style.display = 'block';
+      }
+    }
+  });
+
+  textLayerDiv.addEventListener('mouseout', function (e) {
+    var target = e.target;
+    if (target.classList && target.classList.contains('learncode-highlight')) {
+      tooltip.style.display = 'none';
+    }
+  });
+
+  // --- Annotation: click popup with delete ---
+
+  textLayerDiv.addEventListener('click', function (e) {
+    var target = e.target;
+    if (!target.classList || !target.classList.contains('learncode-highlight')) return;
+
+    var note = target.getAttribute('data-note');
+    var id = target.getAttribute('data-annotation-id');
+    if (!id) return;
+
+    tooltip.style.display = 'none';
+    annotationPopup.innerHTML = '';
+
+    if (note) {
+      var noteEl = document.createElement('div');
+      noteEl.className = 'annotation-popup-note';
+      noteEl.textContent = note;
+      annotationPopup.appendChild(noteEl);
+    } else {
+      var emptyEl = document.createElement('div');
+      emptyEl.className = 'annotation-popup-note';
+      emptyEl.textContent = '(highlight only)';
+      emptyEl.style.fontStyle = 'italic';
+      annotationPopup.appendChild(emptyEl);
+    }
+
+    var deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.className = 'annotation-popup-delete';
+    deleteBtn.addEventListener('click', function () {
+      vscode.postMessage({ command: 'removeAnnotation', id: id });
+      annotationPopup.style.display = 'none';
+    });
+    annotationPopup.appendChild(deleteBtn);
+
+    annotationPopup.style.left = e.pageX + 'px';
+    annotationPopup.style.top = (e.pageY + 10) + 'px';
+    annotationPopup.style.display = 'block';
+  });
+
   // Navigation buttons
   document.getElementById('prevBtn').addEventListener('click', function () { navigate(-1); });
   document.getElementById('nextBtn').addEventListener('click', function () { navigate(1); });
@@ -221,8 +433,17 @@
   // Listen for messages from the extension
   window.addEventListener('message', function (event) {
     var message = event.data;
-    if (message.command === 'navigateToPage') {
-      renderPage(message.page);
+    switch (message.command) {
+      case 'navigateToPage':
+        renderPage(message.page);
+        break;
+      case 'loadAnnotations':
+        applyAnnotations(message.annotations);
+        break;
+      case 'highlightAnnotation':
+        currentAnnotations.push(message.annotation);
+        applyAnnotations(currentAnnotations);
+        break;
     }
   });
 

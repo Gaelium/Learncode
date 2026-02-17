@@ -50,6 +50,10 @@
         "command": "learncode.createWorksheet",
         "title": "LearnCode: New Worksheet",
         "icon": "$(add)"
+      },
+      {
+        "command": "learncode.viewAnnotations",
+        "title": "LearnCode: View All Annotations"
       }
     ],
     "viewsContainers": {

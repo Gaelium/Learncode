@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as cheerio from 'cheerio';
 import * as logger from '../util/logger';
 import { replaceImgMath, renderMathInHtml } from './mathRenderer';
+import { ProgressTracker } from '../workspace/progressTracker';
+import { AnnotationStore } from '../workspace/annotationStore';
 
 export class BookReaderPanel {
   public static currentPanel: BookReaderPanel | undefined;
@@ -14,16 +16,22 @@ export class BookReaderPanel {
   private baseDir: string;
   private spineHrefs: string[] = [];
   private currentSpineIndex = 0;
+  private tracker?: ProgressTracker;
+  private annotationStore?: AnnotationStore;
   private disposables: vscode.Disposable[] = [];
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    baseDir: string
+    baseDir: string,
+    tracker?: ProgressTracker,
+    annotationStore?: AnnotationStore
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
     this.baseDir = baseDir;
+    this.tracker = tracker;
+    this.annotationStore = annotationStore;
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
@@ -44,6 +52,27 @@ export class BookReaderPanel {
               vscode.env.openExternal(vscode.Uri.parse(message.href));
             }
             break;
+          case 'scrollPosition':
+            if (this.tracker) {
+              this.tracker.setReadingPosition({
+                type: 'epub',
+                spineIndex: this.currentSpineIndex,
+                scrollFraction: message.scrollFraction,
+              });
+            }
+            break;
+          case 'addAnnotation':
+            await this.handleAddAnnotation(message);
+            break;
+          case 'removeAnnotation':
+            if (this.annotationStore) {
+              await this.annotationStore.removeAnnotation(message.id);
+              this.sendAnnotationsForSpine(this.currentSpineIndex);
+            }
+            break;
+          case 'ready':
+            this.sendAnnotationsForSpine(this.currentSpineIndex);
+            break;
         }
       },
       null,
@@ -51,10 +80,35 @@ export class BookReaderPanel {
     );
   }
 
+  private async handleAddAnnotation(message: any): Promise<void> {
+    if (!this.annotationStore) return;
+    const note = await vscode.window.showInputBox({
+      prompt: 'Add a note (leave blank for highlight only)',
+      placeHolder: 'Your note...',
+    });
+    if (note === undefined) return; // cancelled
+    const annotation = await this.annotationStore.addAnnotation(
+      message.selectedText,
+      note,
+      message.pageOrSpineIndex,
+      message.textPrefix,
+      message.textSuffix
+    );
+    this.panel.webview.postMessage({ command: 'highlightAnnotation', annotation });
+  }
+
+  private sendAnnotationsForSpine(spineIndex: number): void {
+    if (!this.annotationStore) return;
+    const annotations = this.annotationStore.getAnnotationsForPage(spineIndex);
+    this.panel.webview.postMessage({ command: 'loadAnnotations', annotations });
+  }
+
   static async createOrShow(
     extensionUri: vscode.Uri,
     baseDir: string,
-    targetHref?: string
+    targetHref?: string,
+    tracker?: ProgressTracker,
+    annotationStore?: AnnotationStore
   ): Promise<BookReaderPanel> {
     const column = vscode.ViewColumn.Beside;
 
@@ -80,7 +134,7 @@ export class BookReaderPanel {
       }
     );
 
-    const reader = new BookReaderPanel(panel, extensionUri, baseDir);
+    const reader = new BookReaderPanel(panel, extensionUri, baseDir, tracker, annotationStore);
     BookReaderPanel.currentPanel = reader;
 
     await reader.loadSpine();
@@ -88,7 +142,22 @@ export class BookReaderPanel {
     if (targetHref) {
       await reader.navigateToHref(targetHref);
     } else {
-      await reader.navigateToIndex(0);
+      // Try to restore saved position
+      let restoredIndex = 0;
+      let scrollFraction: number | undefined;
+      if (tracker) {
+        const pos = tracker.getReadingPosition();
+        if (pos && pos.type === 'epub' && pos.spineIndex !== undefined) {
+          restoredIndex = pos.spineIndex;
+          scrollFraction = pos.scrollFraction;
+        }
+      }
+      await reader.navigateToIndex(restoredIndex);
+      if (scrollFraction !== undefined && scrollFraction > 0) {
+        setTimeout(() => {
+          reader.panel.webview.postMessage({ command: 'restoreScroll', scrollFraction });
+        }, 300);
+      }
     }
 
     return reader;
@@ -103,6 +172,10 @@ export class BookReaderPanel {
       this.spineHrefs = [];
       logger.warn('Could not load spine.json');
     }
+  }
+
+  async navigateToSpineIndex(index: number): Promise<void> {
+    await this.navigateToIndex(index);
   }
 
   async navigateToHref(href: string): Promise<void> {
@@ -187,6 +260,13 @@ export class BookReaderPanel {
     const withMath = renderMathInHtml(withImgMath);
     const withImages = this.rewriteImageSrcs(withMath, contentFileDir);
     this.panel.webview.html = this.getWebviewHtml(withImages, index, fragment);
+
+    // Save reading position
+    if (this.tracker) {
+      this.tracker.setReadingPosition({ type: 'epub', spineIndex: index, scrollFraction: 0 });
+    }
+
+    // Annotations are sent when the webview posts a 'ready' message
   }
 
   private getWebviewHtml(bookContent: string, spineIndex: number, fragment?: string): string {
@@ -246,10 +326,33 @@ export class BookReaderPanel {
     });
   }
 
-  static revive(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, baseDir: string): BookReaderPanel {
-    const reader = new BookReaderPanel(panel, extensionUri, baseDir);
+  static revive(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    baseDir: string,
+    tracker?: ProgressTracker,
+    annotationStore?: AnnotationStore
+  ): BookReaderPanel {
+    const reader = new BookReaderPanel(panel, extensionUri, baseDir, tracker, annotationStore);
     BookReaderPanel.currentPanel = reader;
-    reader.loadSpine().then(() => reader.navigateToIndex(0));
+    reader.loadSpine().then(() => {
+      let restoredIndex = 0;
+      let scrollFraction: number | undefined;
+      if (tracker) {
+        const pos = tracker.getReadingPosition();
+        if (pos && pos.type === 'epub' && pos.spineIndex !== undefined) {
+          restoredIndex = pos.spineIndex;
+          scrollFraction = pos.scrollFraction;
+        }
+      }
+      reader.navigateToIndex(restoredIndex).then(() => {
+        if (scrollFraction !== undefined && scrollFraction > 0) {
+          setTimeout(() => {
+            reader.panel.webview.postMessage({ command: 'restoreScroll', scrollFraction });
+          }, 300);
+        }
+      });
+    });
     return reader;
   }
 

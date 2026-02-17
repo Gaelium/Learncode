@@ -5,6 +5,7 @@ import { BookReaderPanel } from '../views/bookReaderPanel';
 import { PdfReaderPanel } from '../views/pdfReaderPanel';
 import { ExerciseTreeProvider } from '../views/sidebarTreeProvider';
 import { ChapterTreeItem } from '../views/sidebarTreeItems';
+import { AnnotationStore } from '../workspace/annotationStore';
 import * as logger from '../util/logger';
 
 export function registerOpenBookReaderCommand(
@@ -23,13 +24,17 @@ export function registerOpenBookReaderCommand(
       const format = await detectFormat(baseDir);
       logger.info(`Book format detected: "${format}", baseDir: ${baseDir}`);
 
+      const tracker = treeProvider.getTracker();
+      const annotationStore = new AnnotationStore(baseDir);
+      await annotationStore.load();
+
       if (format === 'pdf') {
         // Parse page number from "page-N" href
         const targetPage = targetHref ? parsePageFromHref(targetHref) : undefined;
-        await PdfReaderPanel.createOrShow(context.extensionUri, baseDir, targetPage);
+        await PdfReaderPanel.createOrShow(context.extensionUri, baseDir, targetPage, tracker, annotationStore);
         logger.info(`Opened PDF reader${targetPage ? ` at page ${targetPage}` : ''}`);
       } else {
-        await BookReaderPanel.createOrShow(context.extensionUri, baseDir, targetHref);
+        await BookReaderPanel.createOrShow(context.extensionUri, baseDir, targetHref, tracker, annotationStore);
         logger.info(`Opened book reader${targetHref ? ` at ${targetHref}` : ''}`);
       }
     } catch (err) {

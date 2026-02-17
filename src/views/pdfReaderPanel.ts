@@ -3,6 +3,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as logger from '../util/logger';
+import { ProgressTracker } from '../workspace/progressTracker';
+import { AnnotationStore } from '../workspace/annotationStore';
 
 export class PdfReaderPanel {
   public static currentPanel: PdfReaderPanel | undefined;
@@ -13,16 +15,22 @@ export class PdfReaderPanel {
   private baseDir: string;
   private pageCount = 0;
   private currentPage = 1;
+  private tracker?: ProgressTracker;
+  private annotationStore?: AnnotationStore;
   private disposables: vscode.Disposable[] = [];
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    baseDir: string
+    baseDir: string,
+    tracker?: ProgressTracker,
+    annotationStore?: AnnotationStore
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
     this.baseDir = baseDir;
+    this.tracker = tracker;
+    this.annotationStore = annotationStore;
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
@@ -44,6 +52,19 @@ export class PdfReaderPanel {
             break;
           case 'pageRendered':
             this.currentPage = message.page;
+            if (this.tracker) {
+              this.tracker.setReadingPosition({ type: 'pdf', page: message.page });
+            }
+            this.sendAnnotationsForPage(message.page);
+            break;
+          case 'addAnnotation':
+            await this.handleAddAnnotation(message);
+            break;
+          case 'removeAnnotation':
+            if (this.annotationStore) {
+              await this.annotationStore.removeAnnotation(message.id);
+              this.sendAnnotationsForPage(this.currentPage);
+            }
             break;
         }
       },
@@ -52,10 +73,35 @@ export class PdfReaderPanel {
     );
   }
 
+  private async handleAddAnnotation(message: any): Promise<void> {
+    if (!this.annotationStore) return;
+    const note = await vscode.window.showInputBox({
+      prompt: 'Add a note (leave blank for highlight only)',
+      placeHolder: 'Your note...',
+    });
+    if (note === undefined) return; // cancelled
+    const annotation = await this.annotationStore.addAnnotation(
+      message.selectedText,
+      note,
+      message.pageOrSpineIndex,
+      message.textPrefix,
+      message.textSuffix
+    );
+    this.panel.webview.postMessage({ command: 'highlightAnnotation', annotation });
+  }
+
+  private sendAnnotationsForPage(page: number): void {
+    if (!this.annotationStore) return;
+    const annotations = this.annotationStore.getAnnotationsForPage(page);
+    this.panel.webview.postMessage({ command: 'loadAnnotations', annotations });
+  }
+
   static async createOrShow(
     extensionUri: vscode.Uri,
     baseDir: string,
-    targetPage?: number
+    targetPage?: number,
+    tracker?: ProgressTracker,
+    annotationStore?: AnnotationStore
   ): Promise<PdfReaderPanel> {
     const column = vscode.ViewColumn.Beside;
 
@@ -82,11 +128,20 @@ export class PdfReaderPanel {
       }
     );
 
-    const reader = new PdfReaderPanel(panel, extensionUri, baseDir);
+    const reader = new PdfReaderPanel(panel, extensionUri, baseDir, tracker, annotationStore);
     PdfReaderPanel.currentPanel = reader;
 
     await reader.loadPageCount();
-    reader.panel.webview.html = reader.getWebviewHtml(targetPage || 1);
+
+    let initialPage = targetPage;
+    if (!initialPage && tracker) {
+      const pos = tracker.getReadingPosition();
+      if (pos && pos.type === 'pdf' && pos.page) {
+        initialPage = pos.page;
+      }
+    }
+
+    reader.panel.webview.html = reader.getWebviewHtml(initialPage || 1);
 
     return reader;
   }
@@ -154,6 +209,7 @@ export class PdfReaderPanel {
   <div id="pdf-container">
     <div id="page-view">
       <canvas id="pdf-canvas"></canvas>
+      <div id="highlight-layer"></div>
       <div id="text-layer" class="textLayer"></div>
     </div>
   </div>
@@ -181,12 +237,21 @@ export class PdfReaderPanel {
   static revive(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    baseDir: string
+    baseDir: string,
+    tracker?: ProgressTracker,
+    annotationStore?: AnnotationStore
   ): PdfReaderPanel {
-    const reader = new PdfReaderPanel(panel, extensionUri, baseDir);
+    const reader = new PdfReaderPanel(panel, extensionUri, baseDir, tracker, annotationStore);
     PdfReaderPanel.currentPanel = reader;
     reader.loadPageCount().then(() => {
-      reader.panel.webview.html = reader.getWebviewHtml(1);
+      let initialPage = 1;
+      if (tracker) {
+        const pos = tracker.getReadingPosition();
+        if (pos && pos.type === 'pdf' && pos.page) {
+          initialPage = pos.page;
+        }
+      }
+      reader.panel.webview.html = reader.getWebviewHtml(initialPage);
     });
     return reader;
   }
