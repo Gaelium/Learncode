@@ -126,7 +126,12 @@
     "prebuild": "node copy-pdfjs.js",
     "compile": "node copy-pdfjs.js && node esbuild.js",
     "watch": "node copy-pdfjs.js && node esbuild.js --watch",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run src/test/unit",
+    "test:integration": "vitest run src/test/integration"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
@@ -135,9 +140,12 @@
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "esbuild": "^0.20.0",
     "eslint": "^8.56.0",
-    "typescript": "^5.3.0"
+    "memfs": "^4.56.10",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
