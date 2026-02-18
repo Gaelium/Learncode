@@ -55,6 +55,17 @@ Select any text in the book reader to add a highlight and note. A prompt appears
 - **View all annotations**: run **LearnCode: View All Annotations** from the Command Palette to see all your highlights and notes across the book
 - Annotations are persisted in `.learncode/annotations.json` and survive reloads
 
+## Switching Between Projects
+
+After importing multiple books, use **LearnCode: Open Project** to switch between them without navigating the filesystem manually.
+
+- Open the Command Palette (`Cmd+Shift+P`) and run **LearnCode: Open Project**
+- A QuickPick list shows all previously imported books with their title and format
+- Select a project to open its workspace folder in VS Code
+- Choose **Browse for folder...** to open an existing LearnCode project from disk
+
+The project list is maintained automatically — every book you import and every LearnCode workspace you open is remembered across sessions. The folder-opened icon in the Exercises panel title bar provides quick access.
+
 ## Creating Worksheets
 
 LearnCode isn't limited to auto-detected exercises. You can create custom worksheets for any topic.
@@ -150,6 +161,7 @@ my-book-workspace/
 | Command | Description | Available From |
 |---------|-------------|----------------|
 | LearnCode: Import Book | Import an EPUB or PDF book and create a workspace | Command Palette |
+| LearnCode: Open Project | Switch to a previously imported book workspace | Title bar icon, Command Palette |
 | LearnCode: New Worksheet | Create a custom exercise in a chapter | `+` button, chapter context menu, Command Palette |
 | LearnCode: Open Exercise | Open an exercise's main file | Clicking an exercise in the sidebar |
 | LearnCode: Reset Exercise | Restore exercise to original content | Exercise context menu |
