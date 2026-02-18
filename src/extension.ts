@@ -12,6 +12,7 @@ import { registerResetExerciseCommand } from './commands/resetExercise';
 import { registerOpenBookReaderCommand } from './commands/openBookReader';
 import { registerCreateSandboxCommand } from './commands/createSandbox';
 import { registerCreateWorksheetCommand } from './commands/createWorksheet';
+import { registerOpenProjectCommand, registerProject } from './commands/openProject';
 import { AnnotationStore } from './workspace/annotationStore';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -35,6 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(registerOpenBookReaderCommand(context, treeProvider));
   context.subscriptions.push(registerCreateSandboxCommand(context, treeProvider));
   context.subscriptions.push(registerCreateWorksheetCommand(context, treeProvider));
+  context.subscriptions.push(registerOpenProjectCommand(context));
 
   // Refresh tree command
   context.subscriptions.push(
@@ -151,12 +153,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Auto-detect LearnCode workspace on open
-  autoDetectWorkspace(treeProvider);
+  autoDetectWorkspace(context, treeProvider);
 
   info('LearnCode extension activated.');
 }
 
-async function autoDetectWorkspace(treeProvider: ExerciseTreeProvider): Promise<void> {
+async function autoDetectWorkspace(context: vscode.ExtensionContext, treeProvider: ExerciseTreeProvider): Promise<void> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) return;
 
@@ -166,6 +168,23 @@ async function autoDetectWorkspace(treeProvider: ExerciseTreeProvider): Promise<
       await fs.promises.access(learncodeDir);
       await treeProvider.loadWorkspace(folder.uri.fsPath);
       info(`Auto-detected LearnCode workspace: ${folder.uri.fsPath}`);
+
+      // Register this workspace in the project list
+      try {
+        const metadataPath = path.join(learncodeDir, 'metadata.json');
+        const raw = await fs.promises.readFile(metadataPath, 'utf-8');
+        const metadata = JSON.parse(raw);
+        registerProject(
+          context,
+          folder.uri.fsPath,
+          metadata.title || path.basename(folder.uri.fsPath),
+          metadata.format === 'pdf' ? 'pdf' : 'epub',
+        );
+      } catch {
+        // metadata read failed — still register with fallback info
+        registerProject(context, folder.uri.fsPath, path.basename(folder.uri.fsPath), 'epub');
+      }
+
       return;
     } catch {
       // Not a LearnCode workspace

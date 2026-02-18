@@ -5,10 +5,11 @@ import { parseOpf } from "../epub/opfParser";
 import { initializeWorkspace, initializeWorkspacePdf } from "../workspace/workspaceInitializer";
 import { parsePdfMetadata } from "../pdf/index";
 import { ExerciseTreeProvider } from "../views/sidebarTreeProvider";
+import { registerProject } from "./openProject";
 import * as logger from "../util/logger";
 
 export function registerImportBookCommand(
-  _context: vscode.ExtensionContext,
+  context: vscode.ExtensionContext,
   _treeProvider: ExerciseTreeProvider,
 ): vscode.Disposable {
   return vscode.commands.registerCommand("learncode.importBook", async () => {
@@ -65,7 +66,9 @@ export function registerImportBookCommand(
         ? await initializeWorkspacePdf(bookPath, sandboxDir)
         : await initializeWorkspace(bookPath, sandboxDir);
 
-      // Step 5: Auto-open the workspace
+      // Step 5: Register in project list & auto-open the workspace
+      const format = isPdf ? "pdf" as const : "epub" as const;
+      registerProject(context, result.sandboxDir, bookTitle, format);
       vscode.window.showInformationMessage(
         `Imported "${bookTitle}" — ${result.chapterCount} chapters, ${result.exerciseCount} exercises.`,
       );

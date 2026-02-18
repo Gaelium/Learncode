@@ -16,7 +16,8 @@
     "Education"
   ],
   "activationEvents": [
-    "workspaceContains:.learncode"
+    "workspaceContains:.learncode",
+    "onCommand:learncode.openProject"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -59,6 +60,11 @@
       {
         "command": "learncode.viewAnnotations",
         "title": "LearnCode: View All Annotations"
+      },
+      {
+        "command": "learncode.openProject",
+        "title": "LearnCode: Open Project",
+        "icon": "$(folder-opened)"
       }
     ],
     "viewsContainers": {
@@ -80,6 +86,11 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "learncode.openProject",
+          "when": "view == learncode.exerciseTree",
+          "group": "navigation"
+        },
         {
           "command": "learncode.createWorksheet",
           "when": "view == learncode.exerciseTree",
